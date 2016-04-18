@@ -12,11 +12,12 @@ extern MyStatus myStatus;
 MyStatus::MyStatus()
 {
     started = 0;
+    isFirmwareDld = false;
     freeHeapSize = 0;
     numDetectedNodes = 0;
     numDetectedSensors = 0;
-    numRfPktRx = 0;
-    numRfPktTx = 0;
+    //numRfPktRx = 0;
+    //numRfPktTx = 0;
     //numMqttPktRx = 0;
     //numMqttPktTx = 0;
 }
@@ -48,7 +49,7 @@ String MyStatus::makeJsonEnd()
 
 void MyStatus::notifyUpdate(const String& statusStr)
 {
-  if (started)
+  if (started && !isFirmwareDld)
   {
     String str = makeJsonStart();
     str += statusStr;
@@ -59,7 +60,7 @@ void MyStatus::notifyUpdate(const String& statusStr)
 
 void MyStatus::notifyKeyValue(const String& key, const String& value)
 {
-  if (started)
+  if (started && !isFirmwareDld)
   {
     String str = makeJsonStart();
     str += makeJsonKV (key, value);
@@ -182,7 +183,7 @@ void MyStatus::updateDetectedSensors (int nodeUpdate, int sensorUpdate)
 
 void MyStatus::notifyCounters()
 {
-    String statusStr = makeJsonKV ("rfRx", String(numRfPktRx)); 
+    String statusStr = makeJsonKV ("rfRx", String(rfPacketsRx)); // numRfPktRx
     statusStr += String(",");
     statusStr += makeJsonKV ("rfTx", String(rfPacketsTx)); //numRfPktTx
     notifyUpdate (statusStr);
@@ -192,8 +193,8 @@ void MyStatus::notifyCounters()
 
 void MyStatus::updateRfPackets (int rx, int tx)
 {
-    numRfPktRx += rx;
-    numRfPktTx += tx;
+    //numRfPktRx += rx;
+    //numRfPktTx += tx;
     if (! updateTimer.isStarted())
     {
       updateTimer.startOnce();
@@ -219,6 +220,49 @@ void MyStatus::updateFreeHeapSize (uint32 freeHeap)
       notifyKeyValue ("systemFreeHeap", String(freeHeapSize));
     }
 }
+
+void MyStatus::setFirmwareDldStart (int trial)
+{
+    debugf("JOVA: MyStatus::setFirmwareDldStart()");
+    isFirmwareDld = true;
+    String str("{\"type\": \"firmware\", \"data\" : [");
+    str += String ("{\"key\": \"firmwareSt\",");
+    str += String("\"value\": \"Firmware download started, trial=") + String(trial)+ String("\"}");
+    str += String("]}");
+    HTTP.notifyWsClients(str);
+}
+
+void MyStatus::setFirmwareDldEnd (bool isSuccess)
+{
+    debugf("JOVA: MyStatus::setFirmwareDldEnd()");
+    isFirmwareDld = false;
+    String str("{\"type\": \"firmware\", \"data\" : [");
+    str += String ("{\"key\": \"firmwareSt\",");
+    if (isSuccess)
+      str += String("\"value\": \"Firmware download finished\"}");
+    else
+      str += String("\"value\": \"Firmware download failed !\"}");
+    
+    str += String("]}");
+    HTTP.notifyWsClients(str);
+}
+
+
+void MyStatus::onWsGetDldStatusJOVA(WebSocket& socket, const String& message)
+{
+    debugf("MyStatus::onWsGetDldStatusJOVA(): [%s]", message.c_str());
+    //socket.sendString("MyStatus::onWsGetDldStatusJOVA says hello!");
+    //getStatusObj().setFirmwareDldStart(37);
+    //getStatusObj().setFirmwareDldEnd(false);
+}
+
+
+void MyStatus::registerHttpHandlers(HttpServer &server)
+{
+    debugf("MyStatus::registerHttpHandlers()");
+    HTTP.addWsCommand("getDldStatus", WebSocketMessageDelegate(&MyStatus::onWsGetDldStatusJOVA, this));
+}
+
 
 MyStatus& getStatusObj()
 {

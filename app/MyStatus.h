@@ -24,9 +24,15 @@ class MyStatus
     void updateFreeHeapSize (uint32 freeHeap);
     void updateRfPackets (int rx, int tx);
     void updateMqttPackets (int rx, int tx);
+    void setFirmwareDldStart (int trial);
+    void setFirmwareDldEnd (bool isSuccess);
 
     void notifyCounters();
     
+    void onWsGetDldStatusJOVA(WebSocket& socket, const String& message);
+    void registerHttpHandlers(HttpServer &server);
+
+
   protected:
     String makeJsonKV(const String& key, const String& value);
     String makeJsonStart();
@@ -36,12 +42,13 @@ class MyStatus
 
   private:
     int started;
+    bool isFirmwareDld;
     String systemStartTime;
     
     int numDetectedNodes;
     int numDetectedSensors;
-    uint32 numRfPktRx;
-    uint32 numRfPktTx;
+    //uint32 numRfPktRx;
+    //uint32 numRfPktTx;
     //uint32 numMqttPktRx;
     //uint32 numMqttPktTx;
     

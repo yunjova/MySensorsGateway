@@ -9,6 +9,8 @@
 #include <Services/WebHelpers/base64.h>
 #include <Wiring/SplitString.h>
 
+#include <MyStatus.h>
+
 // Forward declarations
 void StartOtaUpdateWeb(String);
 void processRestartCommandWeb(void);
@@ -264,6 +266,7 @@ void HTTPClass::addWsCommand(String command, WebSocketMessageDelegate callback)
 void HTTPClass::notifyWsClients(String message)
 {
     WebSocketsList &clients = server.getActiveWebSockets();
+    debugf("JOVA: HTTPClass::notifyWsClients(): %d, [%s]", clients.count(), message.c_str());
     for (int i = 0; i < clients.count(); i++)
         clients[i].sendString(message);
 }
@@ -281,6 +284,8 @@ void HTTPClass::begin()
     controller.registerHttpHandlers(server);
     server.setDefaultHandler(onFile);
 
+    getStatusObj().registerHttpHandlers(server);
+   
     // Web Sockets configuration
     server.enableWebSockets(true);
     server.setWebSocketConnectionHandler(

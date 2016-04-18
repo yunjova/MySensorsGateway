@@ -3,6 +3,7 @@
 #include <SmingCore/Network/TelnetServer.h>
 #include <AppSettings.h>
 #include <mqtt.h>
+#include "MyStatus.h"
 
 /*******/
 /* OTA */
@@ -27,7 +28,9 @@ int              numOtaTrials = 0;
 
 void StartOtaUpdate() 
 {
+    Debug.println("In StartOtaUpdate()...");
     numOtaTrials++;
+    getStatusObj().setFirmwareDldStart (numOtaTrials);
     otaStartTimer.initializeMs(50, TimerDelegate(otaUpdateHandler)).start(false);
 }
 
@@ -42,6 +45,7 @@ void StartOtaUpdateWeb(String webOtaBaseUrl)
 void otaUpdate_CallBack(bool result) {
 	
     Debug.println("In OTA callback...");
+    getStatusObj().setFirmwareDldEnd (result);
     if(result == true)
     {
         // success
