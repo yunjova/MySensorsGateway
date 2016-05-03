@@ -286,8 +286,6 @@ void HTTPClass::begin()
     server.setDefaultHandler(onFile);
     getStatusObj().registerHttpHandlers(server);
 
-    getStatusObj().registerHttpHandlers(server);
-   
     // Web Sockets configuration
     server.enableWebSockets(true);
     server.setWebSocketConnectionHandler(
