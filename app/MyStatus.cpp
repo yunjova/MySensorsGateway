@@ -13,6 +13,7 @@ MyStatus::MyStatus()
 {
     started = 0;
     isFirmwareDld = false;
+    firmwareTrial=0;
     freeHeapSize = 0;
     numDetectedNodes = 0;
     numDetectedSensors = 0;
@@ -28,6 +29,12 @@ void MyStatus::begin()
 	updateTimer.initializeMs(2000,
 			TimerDelegate(&MyStatus::notifyCounters, this));
 }
+
+void MyStatus::registerHttpHandlers(HttpServer &server)
+{
+    HTTP.addWsCommand("getDldStatus", WebSocketMessageDelegate(&MyStatus::onWsGetDldStatus, this));
+}
+
 
 String MyStatus::makeJsonKV(const String& key, const String& value)
 {
@@ -56,6 +63,12 @@ void MyStatus::notifyUpdate(const String& statusStr)
     str += makeJsonEnd();
     HTTP.notifyWsClients(str);
   }
+  else
+  {
+    String info = String ("No update because started=") + String (started)
+        + String (" isFirmwareDld=") + String (isFirmwareDld);
+    Debug.println(info);
+  }
 }
 
 void MyStatus::notifyKeyValue(const String& key, const String& value)
@@ -67,43 +80,81 @@ void MyStatus::notifyKeyValue(const String& key, const String& value)
     str += makeJsonEnd();
     HTTP.notifyWsClients(str);
   }
+  else
+  {
+    String info = String ("No update because started=") + String (started)
+        + String (" isFirmwareDld=") + String (isFirmwareDld);
+    Debug.println(info);
+  }
+}
+
+void MyStatus::onWsGetDldStatus (WebSocket& socket, const String& message)
+{
+    String str("{\"type\": \"firmware\", \"data\" : [");
+    if (isFirmwareDld)
+    {
+      String val = String ("Downloading firmware (trial=") + String (firmwareTrial) + String (")");
+      str += makeJsonKV ("firmwareSt", val);
+    }
+    else
+    {
+      str += makeJsonKV ("firmwareSt", "...");
+    }
+    str += String(",");
+    str += makeJsonKV ("systemVersion",build_git_sha);
+    str += String(",");
+    str += makeJsonKV ("systemBuild",build_time);
+    str += makeJsonEnd();
+    socket.sendString(str);
 }
 
 void MyStatus::onWsGetStatus (WebSocket& socket, const String& message)
 {
     bool dhcp = AppSettings.dhcp;
     char buf [200];
-
-    notifyKeyValue ("ssid", AppSettings.ssid);
-    notifyKeyValue ("wifiStatus", isNetworkConnected ? "Connected" : "Not connected");
+    String statusStr;
+    
+    statusStr = makeJsonStart();
+    statusStr += makeJsonKV ("ssid", AppSettings.ssid);
+    statusStr += String(",");
+    statusStr += makeJsonKV ("wifiStatus", isNetworkConnected ? "Connected" : "Not connected");
+    statusStr += String(",");
     
     if (!Network.getClientIP().isNull())
     {
-        notifyKeyValue ("gwIp", Network.getClientIP().toString());
+        statusStr += makeJsonKV ("gwIp", Network.getClientIP().toString());
+        statusStr += String(",");
         if (dhcp)
         {
-          notifyKeyValue ("gwIpStatus", "From DHCP");
+          statusStr += makeJsonKV ("gwIpStatus", "From DHCP");
         }
         else
         {
-          notifyKeyValue ("gwIpStatus", "Static");
+          statusStr += makeJsonKV ("gwIpStatus", "Static");
         }
     }
     else
     {
-        notifyKeyValue ("gwIp", "0.0.0.0");
-        notifyKeyValue ("gwIpStatus", "not configured");
+        statusStr += makeJsonKV ("gwIp", "0.0.0.0");
+        statusStr += String(",");
+        statusStr += makeJsonKV ("gwIpStatus", "not configured");
     }
+    statusStr += makeJsonEnd();
+    socket.sendString(statusStr);
 
+    // ---------------
+    statusStr = makeJsonStart();
     if (AppSettings.mqttServer != "")
     {
-        notifyKeyValue ("mqttIp", AppSettings.mqttServer);
-        notifyKeyValue ("mqttStatus", isMqttConnected() ? "Connected":"Not connected");
+        statusStr += makeJsonKV ("mqttIp", AppSettings.mqttServer);
+        statusStr += String(",");
+        statusStr += makeJsonKV ("mqttStatus", isMqttConnected() ? "Connected":"Not connected");
     }
     else
     {
-        notifyKeyValue ("mqttIp", "0.0.0.0");
-        notifyKeyValue ("mqttStatus", "Not configured");
+        statusStr += makeJsonKV ("mqttIp", "0.0.0.0");
+        statusStr += String(",");
+        statusStr += makeJsonKV ("mqttStatus", "Not configured");
     }
 
 
@@ -114,11 +165,16 @@ void MyStatus::onWsGetStatus (WebSocket& socket, const String& message)
       sprintf (buf, "%02x%08x (private)", rfBaseHigh, rfBaseLow);
     else
       sprintf (buf, "%02x%08x (default)", rfBaseHigh, rfBaseLow);
-    notifyKeyValue ("baseAddress", buf);
-    notifyKeyValue ("radioStatus", "?");
 
+    statusStr += String(",");
+    statusStr += makeJsonKV ("baseAddress", buf);
+    statusStr += String(",");
+    statusStr += makeJsonKV ("radioStatus", "?");
+    statusStr += makeJsonEnd();
+    socket.sendString(statusStr);
+    
     // ---------------
-    String statusStr = makeJsonStart();
+    statusStr = makeJsonStart();
     statusStr += makeJsonKV ("detNodes", String(numDetectedNodes));
     statusStr += String(",");
     statusStr += makeJsonKV ("detSensors", String(numDetectedSensors));
@@ -135,10 +191,13 @@ void MyStatus::onWsGetStatus (WebSocket& socket, const String& message)
 
     // ---------------
     sprintf (buf, "%x", system_get_chip_id());
+    int slot = rboot_get_current_rom();
     statusStr = makeJsonStart();
     statusStr += makeJsonKV ("systemVersion", build_git_sha);
     statusStr += String(",");
     statusStr += makeJsonKV ("systemBuild", build_time);
+    statusStr += String(",");
+    statusStr += makeJsonKV ("currentRomSlot", String(slot));
     statusStr += String(",");
     statusStr += makeJsonKV ("systemChipId", buf);
     statusStr += String(",");
@@ -225,14 +284,16 @@ void MyStatus::setFirmwareDldStart (int trial)
 {
     debugf("JOVA: MyStatus::setFirmwareDldStart()");
     isFirmwareDld = true;
+    firmwareTrial = trial;
     String str("{\"type\": \"firmware\", \"data\" : [");
     str += String ("{\"key\": \"firmwareSt\",");
     str += String("\"value\": \"Firmware download started, trial=") + String(trial)+ String("\"}");
     str += String("]}");
+    Debug.println(str.c_str());
     HTTP.notifyWsClients(str);
 }
 
-void MyStatus::setFirmwareDldEnd (bool isSuccess)
+void MyStatus::setFirmwareDldEnd (bool isSuccess, int trial)
 {
     debugf("JOVA: MyStatus::setFirmwareDldEnd()");
     isFirmwareDld = false;
@@ -241,9 +302,11 @@ void MyStatus::setFirmwareDldEnd (bool isSuccess)
     if (isSuccess)
       str += String("\"value\": \"Firmware download finished\"}");
     else
-      str += String("\"value\": \"Firmware download failed !\"}");
+      str += String("\"value\": \"Firmware download failed (trial=")
+             + String(trial) + String(")\"}");
     
     str += String("]}");
+    Debug.println(str.c_str());
     HTTP.notifyWsClients(str);
 }
 

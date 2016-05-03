@@ -4,6 +4,7 @@
 #include <Network.h>
 #include <SDCard.h>
 #include <MyGateway.h>
+#include <MyStatus.h>
 #include <AppSettings.h>
 #include <controller.h>
 #include <Services/WebHelpers/base64.h>
@@ -283,6 +284,7 @@ void HTTPClass::begin()
     GW.registerHttpHandlers(server);
     controller.registerHttpHandlers(server);
     server.setDefaultHandler(onFile);
+    getStatusObj().registerHttpHandlers(server);
 
     getStatusObj().registerHttpHandlers(server);
    
